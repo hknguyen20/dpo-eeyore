@@ -202,8 +202,6 @@ def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[
         prompt_messages = ex['prompt']
         try:
             prompt = build_conversation_context(prompt_messages)
-            if prompt is None:
-                return None, None, None
         except Exception as e:
             raise ValueError(f"Error building conversation context from prompt messages: {prompt_messages}") from e
         chosen_response = f" {ex['chosen'][0]['content']}"
