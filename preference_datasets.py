@@ -159,6 +159,60 @@ def get_hh(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str,
 
     return data
 
+def get_eeyore_depression_generated_preference(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Anthropic Helpful-Harmless dataset from Huggingface and convert it to the necessary format.
+    
+       The dataset is converted to a dictionary with the following structure:
+       {
+           'prompt1': {
+               'responses': List[str],
+               'pairs': List[Tuple[int, int]],
+               'sft_target': str
+           },
+           'prompt2': {
+               ...
+           },
+       }
+
+       Prompts should be structured as follows:
+         \n\nHuman: <prompt>\n\nAssistant:
+       Multiple turns are allowed, but the prompt should always start with \n\nHuman: and end with \n\nAssistant:.
+       
+       For this dataset, the sft_target is just the chosen response.
+    """
+    print(f'Loading HH dataset ({split} split) from Huggingface...')
+    dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split=split, cache_dir=cache_dir)
+    print('done')
+
+    def prepare_response_from_conversation(conversation):
+        response = f"{conversation[0]['content']}\n\n"
+        if(len(conversation) < 2):
+            return response.strip()
+        for turn in conversation[1:]:
+            if turn['role'] == 'assistant':
+                response += f"Assistant: {turn['content']}\n\n"
+            elif turn['role'] == 'user':
+                response += f"Human: {turn['content']}\n\n"
+        return response.strip()       
+        
+    def split_prompt_and_responses(ex):
+        conversation = eval(ex['conversation'])
+        prompt = f"\n\nHuman: {conversation[0]['content']}\n\nAssistant:"
+        chosen_response = prepare_response_from_conversation(conversation[1:]) + f"\n\nAssistant: {ex['chosen']['content']}"
+        rejected_response = prepare_response_from_conversation(conversation[1:]) + f"\n\nAssistant: {ex['rejected']['content']}"
+        return prompt, chosen_response, rejected_response
+
+    data = defaultdict(lambda: defaultdict(list))
+    for row in tqdm.tqdm(dataset, desc='Processing eeyore_depression_generated_preference', disable=silent):
+        prompt, chosen, rejected = split_prompt_and_responses(row)
+        responses = [chosen, rejected]
+        n_responses = len(data[prompt]['responses'])
+        data[prompt]['pairs'].append((n_responses, n_responses + 1))
+        data[prompt]['responses'].extend(responses)
+        data[prompt]['sft_target'] = chosen
+
+    return data
+
 
 def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = None):
     """Load the given dataset by name. Supported by default are 'shp', 'hh', and 'se'."""
@@ -168,6 +222,8 @@ def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = No
         data = get_hh(split, silent=silent, cache_dir=cache_dir)
     elif name == 'se':
         data = get_se(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'eeyore_preference':
+        data = get_eeyore_depression_generated_preference(split, silent=silent, cache_dir=cache_dir)
     else:
         raise ValueError(f"Unknown dataset '{name}'")
 
@@ -200,7 +256,8 @@ def get_collate_fn(tokenizer) -> Callable[[List[Dict]], Dict[str, Union[List, to
                     padding_value = 0
                 else:
                     raise ValueError(f"Unexpected key in batch '{k}'")
-
+                if padding_value is None: 
+                    padding_value = -100
                 padded_batch[k] = pad_sequence(to_pad, batch_first=True, padding_value=padding_value)
                 if 'prompt' in k:  # for the prompt, flip back so padding is on left side
                     padded_batch[k] = padded_batch[k].flip(dims=[1])
@@ -331,7 +388,7 @@ def get_batch_iterator(names: List[str],
                 print(f'Finished generating {n_epochs} epochs on {split} split')
             break
         if shuffle:
-            with TemporarilySeededRandom(next(permutation_seeds)):
+            with TemporarilySeededRandom(int(next(permutation_seeds))):
                 random.shuffle(flat_data)
 
         batch = []

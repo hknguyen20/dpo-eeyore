@@ -59,13 +59,17 @@ Let's work through a complete example training pythia 2.8B on the Anthropic-HH d
 
 See sample wandb outputs for this example [here](https://wandb.ai/eric_anthony_mitchell/dpo-demos) (tagged `readme-example`).
 
-### Step 1: Set up environment
+### Step 1: Set up environment (OLD)
 
 First, create a virtualenv and install the dependencies. Python 3.8+ is recommended.
 
     python3 -m venv env
     source env/bin/activate
     pip install -r requirements.txt
+
+### Step 1: Set up environment (NEW_OUR PROJECT)
+Create conda environment. Python 3.11 is used. Recommended
+    conda env create -f environment.yml
 
 
 ### Step 2: Run SFT
