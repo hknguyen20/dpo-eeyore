@@ -2,3 +2,5 @@ dpo-venv/
 outputs/
 .cache/
 *.pyc
+*.out
+*.log

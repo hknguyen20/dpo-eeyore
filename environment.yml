@@ -1,4 +1,4 @@
-name: depression_simulation
+name: dpo
 channels:
   - defaults
   - https://repo.anaconda.com/pkgs/main

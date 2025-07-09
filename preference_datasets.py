@@ -159,8 +159,8 @@ def get_hh(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str,
 
     return data
 
-def get_eeyore_depression_generated_preference(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
-    """Load the Anthropic Helpful-Harmless dataset from Huggingface and convert it to the necessary format.
+def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Eeyore Depression Generated Preference dataset from Huggingface and convert it to the necessary format.
     
        The dataset is converted to a dictionary with the following structure:
        {
@@ -175,34 +175,44 @@ def get_eeyore_depression_generated_preference(split: str, silent: bool = False,
        }
 
        Prompts should be structured as follows:
-         \n\nHuman: <prompt>\n\nAssistant:
-       Multiple turns are allowed, but the prompt should always start with \n\nHuman: and end with \n\nAssistant:.
+        System: <system prompt> ...\n\nHuman: <prompt>\n\nAssistant:
+       However, based on Eeyore Dataset, can have cases like:
+        - Only system prompt
+        - two consecutive assistant messages.
        
        For this dataset, the sft_target is just the chosen response.
     """
-    print(f'Loading HH dataset ({split} split) from Huggingface...')
+    print(f'Loading Eeyore Preference dataset ({split} split) from Huggingface...')
     dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split=split, cache_dir=cache_dir)
     print('done')
-
-    def prepare_response_from_conversation(conversation):
-        response = f"{conversation[0]['content']}\n\n"
-        if(len(conversation) < 2):
-            return response.strip()
-        for turn in conversation[1:]:
-            if turn['role'] == 'assistant':
-                response += f"Assistant: {turn['content']}\n\n"
-            elif turn['role'] == 'user':
-                response += f"Human: {turn['content']}\n\n"
-        return response.strip()       
+    
+    def build_conversation_context(prompt_messages):
+        """Build the conversation context from the prompt messages."""
+        context = ''
+        for message in prompt_messages:
+            if message['role'] == 'system':
+                context+= f"System: {message['content']}\n\n"
+            elif message['role'] == 'assistant':
+                context += f"Assistant: {message['content']}\n\n"
+            elif message['role'] == 'user':
+                context += f"Human: {message['content']}\n\n"
+        return context + "Assistant: "
         
     def split_prompt_and_responses(ex):
-        conversation = eval(ex['conversation'])
-        prompt = f"\n\nHuman: {conversation[0]['content']}\n\nAssistant:"
-        chosen_response = prepare_response_from_conversation(conversation[1:]) + f"\n\nAssistant: {ex['chosen']['content']}"
-        rejected_response = prepare_response_from_conversation(conversation[1:]) + f"\n\nAssistant: {ex['rejected']['content']}"
+        prompt_messages = ex['prompt']
+        try:
+            prompt = build_conversation_context(prompt_messages)
+            if prompt is None:
+                return None, None, None
+        except Exception as e:
+            raise ValueError(f"Error building conversation context from prompt messages: {prompt_messages}") from e
+        chosen_response = f" {ex['chosen'][0]['content']}"
+        rejected_response = f" {ex['rejected'][0]['content']}"
+        
         return prompt, chosen_response, rejected_response
 
     data = defaultdict(lambda: defaultdict(list))
+    skipped_count = 0
     for row in tqdm.tqdm(dataset, desc='Processing eeyore_depression_generated_preference', disable=silent):
         prompt, chosen, rejected = split_prompt_and_responses(row)
         responses = [chosen, rejected]
@@ -210,7 +220,7 @@ def get_eeyore_depression_generated_preference(split: str, silent: bool = False,
         data[prompt]['pairs'].append((n_responses, n_responses + 1))
         data[prompt]['responses'].extend(responses)
         data[prompt]['sft_target'] = chosen
-
+        
     return data
 
 
@@ -222,8 +232,8 @@ def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = No
         data = get_hh(split, silent=silent, cache_dir=cache_dir)
     elif name == 'se':
         data = get_se(split, silent=silent, cache_dir=cache_dir)
-    elif name == 'eeyore_preference':
-        data = get_eeyore_depression_generated_preference(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'eeyore':
+        data = get_eeyore(split, silent=silent, cache_dir=cache_dir)
     else:
         raise ValueError(f"Unknown dataset '{name}'")
 
