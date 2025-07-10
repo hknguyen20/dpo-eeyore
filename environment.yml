@@ -121,12 +121,12 @@ dependencies:
       - stack-data==0.6.3
       - sympy==1.14.0
       - tensor-parallel==1.2.4
-      - tokenizers==0.13.3
+      - tokenizers==0.14.1
       - torch==2.0.1
       - tornado==6.5.1
       - tqdm==4.67.1
       - traitlets==5.14.3
-      - transformers==4.29.2
+      - transformers==4.34.0
       - triton==2.0.0
       - typing-extensions==4.14.1
       - tzdata==2025.2

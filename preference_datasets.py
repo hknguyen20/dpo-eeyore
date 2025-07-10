@@ -182,9 +182,23 @@ def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[
        
        For this dataset, the sft_target is just the chosen response.
     """
-    print(f'Loading Eeyore Preference dataset ({split} split) from Huggingface...')
-    dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split=split, cache_dir=cache_dir)
+    print(f'Loading Eeyore Preference dataset from Huggingface...')
+    full_dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split='train', cache_dir=cache_dir)
     print('done')
+    
+    dataset_size = len(full_dataset)
+    indices = list(range(dataset_size))
+    
+    # Set seed for reproducibility
+    random.seed(42)
+    random.shuffle(indices) 
+    test_size = int(0.2 * dataset_size)
+    if split == 'train':
+        dataset = full_dataset.select(indices[test_size:])
+    elif split == 'test':
+        dataset = full_dataset.select(indices[:test_size])
+    else:
+        raise ValueError(f"Unknown split {split}. Must be 'train' or 'test'")
     
     def build_conversation_context(prompt_messages):
         """Build the conversation context from the prompt messages."""
