@@ -4,5 +4,5 @@ archive: null
 block_name: LlamaDecoderLayer
 
 policy_dtype: float32
-fsdp_policy_mp: null
+fsdp_policy_mp: bfloat16
 reference_dtype: float16
