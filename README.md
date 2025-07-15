@@ -69,9 +69,13 @@ First, create a virtualenv and install the dependencies. Python 3.8+ is recommen
 
 ### Step 1: Set up environment (NEW_OUR PROJECT)
 Create conda environment. Python 3.11 is used. Recommended
+
     conda env create -f environment.yml
 
+then activate environment and:
 
+    pip install transformers==4.34.0
+    pip install --upgrade huggingface-hub
 ### Step 2: Run SFT
 
 We'll take advantage of FSDP's mixed precision in bfloat16 to speed up training; we usually see about a 50% speedup. By default, SFT will run for a single epoch over a mixture of the selected datasets. Datasets will be downloaded on the fly and cached locally.
