@@ -5,10 +5,10 @@ seed: 0
 exp_name: sft-eeyore
 
 # the batch size for training; for FSDP, the batch size per GPU is batch_size / (grad_accumulation_steps * num_gpus)
-batch_size: 12 # FSDP 3 gpus
+batch_size: 8 # FSDP 2 gpus
 
 # the batch size during evaluation and sampling, if enabled
-eval_batch_size: 12
+eval_batch_size: 8
 
 # debug mode (disables wandb, model checkpointing, etc.)
 debug: false
@@ -18,7 +18,7 @@ fsdp_port: null
 
 # which dataset(s) to train on; can pass a list like datasets=[hh,shp]
 datasets:
-- eeyore
+- eeyore_sft
 
 # wandb configuration
 wandb:
