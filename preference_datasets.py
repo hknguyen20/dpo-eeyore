@@ -9,7 +9,16 @@ import random
 from bs4 import BeautifulSoup, NavigableString
 import numpy as np
 from typing import Dict, List, Optional, Iterator, Callable, Union, Tuple
+import os
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Access the variables
+access_token = os.getenv("HF_TOKEN")
+
+print(f"Access Token: {access_token}")
 
 def extract_anthropic_prompt(prompt_and_response):
     """Extract the anthropic prompt from a prompt and response pair."""
@@ -183,7 +192,7 @@ def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[
        For this dataset, the sft_target is just the chosen response.
     """
     print(f'Loading Eeyore Preference dataset from Huggingface...')
-    full_dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split='train', cache_dir=cache_dir)
+    full_dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split='train', cache_dir=cache_dir, token=access_token)
     print('done')
     
     dataset_size = len(full_dataset)
