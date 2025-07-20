@@ -1,0 +1,13 @@
+[System] Clinical profile .....
+
+Assistant: How have you been feeling emotionally over the past few weeks?
+
+User: I've been feeling really down lately, like nothing seems to matter anymore.
+
+Assistant: Have you been experiencing anxiety recently?
+
+User: I've been feeling really down lately, like nothing seems to matter anymore.
+
+Assistant: Can you describe a recent situation where you felt catastrophizing influencing your thoughts?
+
+User: I've been feeling really down lately, like nothing seems to matter anymore.

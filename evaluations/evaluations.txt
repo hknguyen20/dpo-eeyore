@@ -1,0 +1,3 @@
+depression_severity: 5
+symptom_severity: 5
+cognitive_distortion: 5
