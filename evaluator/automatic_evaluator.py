@@ -1,84 +1,12 @@
 import os
 from dotenv import load_dotenv
-from utils import parse_conversation_to_transcript
+from utils import parse_conversation_to_transcript, load_the_interview_prompts, load_the_evaluation_prompts, parse_evaluation_prompts
 import json
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY is not set. Please set it in the .env file.")
-
-def load_the_interview_prompts(type_of_clinically_relevant: str = "None", symptom: str = "None", cognitive_distortion: str = "None") -> list:
-    """
-    Load the prompts for evaluating depression severity.
-    Returns a list of prompts.
-    """
-    SYMPTOM = symptom
-    COGNITIVE_DISTORTION = cognitive_distortion
-    
-    if type_of_clinically_relevant == "None":
-        raise ValueError("Please specify the type of clinically relevant prompts.")
-    if type_of_clinically_relevant == "depression_severity":
-        prompts = [ 
-            "How have you been feeling emotionally over the past few weeks?", 
-            "Do you still enjoy activities that you used to find fun or meaningful?", 
-            "How has your energy been lately? Do you feel tired or drained often?", 
-            "Do you ever feel guilty, worthless, or overly critical of yourself?", 
-            "Have you had any thoughts about death, feeling hopeless, or that things won’t get better?"
-        ]
-        return prompts
-    elif type_of_clinically_relevant == "symptom_severity":
-        if SYMPTOM == "None":
-            raise ValueError("Please specify the symptom.")
-        prompts = [ 
-            f"Have you been experiencing {SYMPTOM} recently?",
-            f"How much does {SYMPTOM} affect your daily life or ability to do things you enjoy?",
-            f"What, if anything, helps when {SYMPTOM} happens? Have you found ways to manage or reduce it?",
-        ]
-        return prompts
-    elif type_of_clinically_relevant == "cognitive_distortion":
-        if COGNITIVE_DISTORTION == "None":
-            raise ValueError("Please specify the cognitive distortion.")
-        prompts = [
-            f"Can you describe a recent situation where you felt {COGNITIVE_DISTORTION} influencing your thoughts?",
-            f"Have you noticed any patterns or triggers that make {COGNITIVE_DISTORTION} more frequent or intense?",
-            f"What impact does {COGNITIVE_DISTORTION} have on your mood, motivation, or self-esteem?",
-        ]
-        return prompts
-    else:
-        raise ValueError("Invalid type of clinically relevant prompts. Please choose from 'depression_severity', 'symptom_severity', or 'cognitive_distortion'.")
-
-
-def load_the_evaluation_prompts(depression_severity: str = "None", symptom_severity: str = "None", cognitive_distortion: str = "None") -> list:
-    evaluation_prompts = []
-    
-    # 1-Minimal Depression, 2-Mild Depression, 3-Moderate Depression, and 4-Severe Deperession
-    if depression_severity == "None":
-        raise ValueError("Please specify the depression_severity.")
-    prompts = [
-        f"How subtly and consistently does the client reflect a {depression_severity} level of depression in their responses?",
-    ]
-    evaluation_prompts.extend(prompts)
-    
-    # 1-Not exhibited, 2-Mild, 3-Moderate, and 4-Severe.
-    if symptom_severity == "None":
-        raise ValueError("Please specify the symptom_severity.")
-    symptom_severity = symptom_severity.lower()
-    prompts = [
-        f"How subtly and consistently does the client reflect a {symptom_severity} level of symptoms in their responses?",
-    ]
-    evaluation_prompts.extend(prompts)
-    
-    # 1-Not exhibited and 2-Exhibited.
-    if cognitive_distortion == "None":
-        raise ValueError("Please specify the cognitive distortion.")
-    prompts = [
-        f"How subtly and consistently does the client reflect a {cognitive_distortion} level of cognitive distortion in their responses?"
-    ]
-    
-    
-    evaluation_prompts.extend(prompts)
-    return evaluation_prompts
 
 def load_evaluator():
     from openai import OpenAI
@@ -98,12 +26,7 @@ def evaluate_with_evaluator(client, transcript = "None", evaluation_prompts = "N
         raise Exception(f"Error in response: {response.error}")
     return response.output_text
 
-def parse_evaluation_prompts(evaluation_prompts):
-    parsed_prompts = []
-    for i, prompt in enumerate(evaluation_prompts):
-        parsed_prompt = f"Question {i+1}: {prompt.strip()}"
-        parsed_prompts.append(parsed_prompt)
-    return '\n'.join(parsed_prompts)
+
 
 # Pipeline: 
 #     1. Load the prompts (The three clinical relevant prompts)
@@ -111,7 +34,6 @@ def parse_evaluation_prompts(evaluation_prompts):
 #     3. Save responses into a file
 #     4. Use gpt-4 to evaluate the alignment (Use 5 likert) - this use evaluation prompts
 #     5. Save the evaluation 
-
 
 def main():
     # Load the prompts
@@ -124,12 +46,16 @@ def main():
     all_prompts = depression_prompts[:number_of_each_type] + symptom_prompts[:number_of_each_type] + cognitive_prompts[:number_of_each_type]
     interview_prompts = [{"role": "assistant", 
                           "content": f"{prompt}"} for prompt in all_prompts]
-    ## CODE HERE ##
-    # Load the responses (This should be replaced with actual data loading logic)
     
-    # responses = [
-    #  # CALL MODEL HERE TO GENERATE RESPONSES
-    # ]
+    # _________________
+    # ## CODE HERE ##
+    # # Load the responses (This should be replaced with actual data loading logic)
+    
+    # # responses = [
+    # #  # CALL MODEL HERE TO GENERATE RESPONSES
+    # # ]
+    # ____________________
+    
     
     ## Example responses (This should be replaced with actual model responses)
     responses = [

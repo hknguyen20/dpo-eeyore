@@ -48,163 +48,116 @@ def parse_conversation_to_transcript(conversation_data, include_system=False, sp
     
     return '\n\n'.join(transcript_lines)
 
-
-def parse_conversation_simple(conversation_data, separator="\n---\n"):
+def load_the_interview_prompts(type_of_clinically_relevant: str = "None", symptom: str = "None", cognitive_distortion: str = "None") -> list:
     """
-    Simple parser that creates a clean transcript without speaker labels.
-    
-    Args:
-        conversation_data (list): List of dictionaries with 'role' and 'content' keys
-        separator (str): Separator between messages
-    
-    Returns:
-        str: Simple transcript with messages separated by the specified separator
+    Load the prompts for evaluating depression severity.
+    Returns a list of prompts.
     """
-    messages = []
+    SYMPTOM = symptom
+    COGNITIVE_DISTORTION = cognitive_distortion
     
-    for entry in conversation_data:
-        content = entry.get('content', '').strip()
-        role = entry.get('role', '')
-        
-        # Skip system messages and empty content
-        if role == 'system' or not content:
-            continue
-            
-        messages.append(content)
-    
-    return separator.join(messages)
+    if type_of_clinically_relevant == "None":
+        raise ValueError("Please specify the type of clinically relevant prompts.")
+    if type_of_clinically_relevant == "depression_severity":
+        prompts = [ 
+            "How have you been feeling emotionally over the past few weeks?", 
+            "Do you still enjoy activities that you used to find fun or meaningful?", 
+            "How has your energy been lately? Do you feel tired or drained often?", 
+            "Do you ever feel guilty, worthless, or overly critical of yourself?", 
+            "Have you had any thoughts about death, feeling hopeless, or that things won’t get better?"
+        ]
+        return prompts
+    elif type_of_clinically_relevant == "symptom_severity":
+        if SYMPTOM == "None":
+            raise ValueError("Please specify the symptom.")
+        prompts = [ 
+            f"Have you been experiencing {SYMPTOM} recently?",
+            f"How much does {SYMPTOM} affect your daily life or ability to do things you enjoy?",
+            f"What, if anything, helps when {SYMPTOM} happens? Have you found ways to manage or reduce it?",
+        ]
+        return prompts
+    elif type_of_clinically_relevant == "cognitive_distortion":
+        if COGNITIVE_DISTORTION == "None":
+            raise ValueError("Please specify the cognitive distortion.")
+        prompts = [
+            f"Can you describe a recent situation where you felt {COGNITIVE_DISTORTION} influencing your thoughts?",
+            f"Have you noticed any patterns or triggers that make {COGNITIVE_DISTORTION} more frequent or intense?",
+            f"What impact does {COGNITIVE_DISTORTION} have on your mood, motivation, or self-esteem?",
+        ]
+        return prompts
+    else:
+        raise ValueError("Invalid type of clinically relevant prompts. Please choose from 'depression_severity', 'symptom_severity', or 'cognitive_distortion'.")
 
 
-# def parse_conversation_structured(conversation_data, include_metadata=True):
-#     """
-#     Parse conversation into a structured format with metadata.
+def load_the_evaluation_prompts(depression_severity: str = "None", symptom_severity: str = "None", cognitive_distortion: str = "None") -> list:
+    evaluation_prompts = []
     
-#     Args:
-#         conversation_data (list): List of dictionaries with 'role' and 'content' keys
-#         include_metadata (bool): Whether to include role metadata
+    # 1-Minimal Depression, 2-Mild Depression, 3-Moderate Depression, and 4-Severe Deperession
+    if depression_severity == "None":
+        raise ValueError("Please specify the depression_severity.")
+    prompts = [
+        f"How subtly and consistently does the client reflect a {depression_severity} level of depression in their responses?",
+    ]
+    evaluation_prompts.extend(prompts)
     
-#     Returns:
-#         str: Structured transcript
-#     """
-#     transcript_parts = []
-#     message_count = 0
+    # 1-Not exhibited, 2-Mild, 3-Moderate, and 4-Severe.
+    if symptom_severity == "None":
+        raise ValueError("Please specify the symptom_severity.")
+    symptom_severity = symptom_severity.lower()
+    prompts = [
+        f"How subtly and consistently does the client reflect a {symptom_severity} level of symptoms in their responses?",
+    ]
+    evaluation_prompts.extend(prompts)
     
-#     for entry in conversation_data:
-#         role = entry.get('role', 'unknown')
-#         content = entry.get('content', '').strip()
-        
-#         if not content:
-#             continue
-        
-#         if role == 'system':
-#             if include_metadata:
-#                 transcript_parts.append(f"=== SYSTEM CONTEXT ===\n{content}\n")
-#         else:
-#             message_count += 1
-#             role_label = "CLIENT" if role == "assistant" else "SUPPORTER"
-            
-#             if include_metadata:
-#                 transcript_parts.append(f"[Message {message_count} - {role_label}]\n{content}\n")
-#             else:
-#                 transcript_parts.append(f"{role_label}: {content}\n")
-    
-#     return '\n'.join(transcript_parts)
-
-
-# def parse_conversation_for_ml(conversation_data, format_type="dialogue"):
-#     """
-#     Parse conversation specifically for ML model input.
-    
-#     Args:
-#         conversation_data (list): List of dictionaries with 'role' and 'content' keys
-#         format_type (str): 'dialogue', 'narrative', or 'qa' format
-    
-#     Returns:
-#         str: ML-ready transcript
-#     """
-#     if format_type == "dialogue":
-#         # Standard dialogue format
-#         lines = []
-#         for entry in conversation_data:
-#             role = entry.get('role', '')
-#             content = entry.get('content', '').strip()
-            
-#             if role == 'system' or not content:
-#                 continue
-                
-#             speaker = "User" if role == "user" else "Assistant"
-#             lines.append(f"{speaker}: {content}")
-        
-#         return '\n\n'.join(lines)
-    
-#     elif format_type == "narrative":
-#         # Narrative format for text generation models
-#         messages = []
-#         for entry in conversation_data:
-#             role = entry.get('role', '')
-#             content = entry.get('content', '').strip()
-            
-#             if role == 'system' or not content:
-#                 continue
-                
-#             messages.append(content)
-        
-#         return ' '.join(messages)
-    
-#     elif format_type == "qa":
-#         # Question-Answer pairs
-#         qa_pairs = []
-#         current_q = None
-        
-#         for entry in conversation_data:
-#             role = entry.get('role', '')
-#             content = entry.get('content', '').strip()
-            
-#             if role == 'system' or not content:
-#                 continue
-            
-#             if role == 'user':
-#                 current_q = content
-#             elif role == 'assistant' and current_q:
-#                 qa_pairs.append(f"Q: {current_q}\nA: {content}")
-#                 current_q = None
-        
-#         return '\n\n'.join(qa_pairs)
-    
-#     return ""
-
-
-# Example usage with your data
-if __name__ == "__main__":
-    # Sample data structure (replace with your actual data)
-    sample_conversation = [
-        {
-            "role": "system",
-            "content": "You will act as a help-seeker struggling with negative emotions..."
-        },
-        {
-            "role": "assistant", 
-            "content": "Hello everyone, i'm not sure if this is the right sub to get an answer..."
-        },
-        {
-            "role": "user",
-            "content": "It can take up to 2 weeks for them to start properly working..."
-        }
+    # 1-Not exhibited and 2-Exhibited.
+    if cognitive_distortion == "None":
+        raise ValueError("Please specify the cognitive distortion.")
+    prompts = [
+        f"How subtly and consistently does the client reflect a {cognitive_distortion} level of cognitive distortion in their responses?"
     ]
     
-    # Different parsing options
-    print("=== Standard Transcript ===")
-    transcript1 = parse_conversation_to_transcript(
-        sample_conversation, 
-        speaker_labels={'user': 'User', 'assistant': 'Assistant', 'system': 'System'},
-        include_system=True
-    )
-    print(transcript1)
     
-    # print("\n=== Simple Format ===")
-    # transcript2 = parse_conversation_simple(sample_conversation)
-    # print(transcript2)
+    evaluation_prompts.extend(prompts)
+    return evaluation_prompts
+
+def parse_evaluation_prompts(evaluation_prompts):
+    parsed_prompts = []
+    for i, prompt in enumerate(evaluation_prompts):
+        parsed_prompt = f"Question {i+1}: {prompt.strip()}"
+        parsed_prompts.append(parsed_prompt)
+    return '\n'.join(parsed_prompts)
+
+# Example usage with your data
+# if __name__ == "__main__":
+#     # Sample data structure (replace with your actual data)
+#     sample_conversation = [
+#         {
+#             "role": "system",
+#             "content": "You will act as a help-seeker struggling with negative emotions..."
+#         },
+#         {
+#             "role": "assistant", 
+#             "content": "Hello everyone, i'm not sure if this is the right sub to get an answer..."
+#         },
+#         {
+#             "role": "user",
+#             "content": "It can take up to 2 weeks for them to start properly working..."
+#         }
+#     ]
     
-    # print("\n=== ML Dialogue Format ===")
-    # transcript3 = parse_conversation_for_ml(sample_conversation, "dialogue")
-    # print(transcript3)
+#     # Different parsing options
+#     print("=== Standard Transcript ===")
+#     transcript1 = parse_conversation_to_transcript(
+#         sample_conversation, 
+#         speaker_labels={'user': 'User', 'assistant': 'Assistant', 'system': 'System'},
+#         include_system=True
+#     )
+#     print(transcript1)
+    
+#     # print("\n=== Simple Format ===")
+#     # transcript2 = parse_conversation_simple(sample_conversation)
+#     # print(transcript2)
+    
+#     # print("\n=== ML Dialogue Format ===")
+#     # transcript3 = parse_conversation_for_ml(sample_conversation, "dialogue")
+#     # print(transcript3)
