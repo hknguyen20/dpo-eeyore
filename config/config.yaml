@@ -18,8 +18,9 @@ fsdp_port: null
 
 # which dataset(s) to train on; can pass a list like datasets=[hh,shp]
 datasets:
-- hh
 # - eeyore
+- eeyore_sft
+
 
 # wandb configuration
 wandb:
@@ -49,7 +50,7 @@ do_first_eval: true
 local_run_dir: ${get_local_run_dir:${exp_name},${local_dirs}}
 
 # the learning rate
-lr: 1e-7
+lr: 5e-6 #sft
 
 # number of steps to accumulate over for each batch
 #   (e.g. if batch_size=4 and gradient_accumulation_steps=2, then we will

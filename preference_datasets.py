@@ -51,7 +51,6 @@ def strip_html_tags(html_string):
 
     return text
 
-
 def get_se(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
     """Load the StackExchange dataset from Huggingface, and return a dict of prompts and responses. See get_hh for the format.
     
@@ -168,8 +167,8 @@ def get_hh(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str,
 
     return data
 
-def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
-    """Load the Eeyore Depression Generated Preference dataset from Huggingface and convert it to the necessary format.
+def get_eeyore(split: str, sft_mode: bool = False, silent: bool = False,cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Eeyore SFT/DPO from Huggingface and convert it to the necessary format.
     
        The dataset is converted to a dictionary with the following structure:
        {
@@ -189,12 +188,16 @@ def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[
         - Only system prompt
         - two consecutive assistant messages.
        
-       For this dataset, the sft_target is just the chosen response.
+       For this dataset, the sft_target is just the chosen response for DPO, and last assistant message for SFT.
     """
-    print(f'Loading Eeyore Preference dataset from Huggingface...')
-    full_dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split='train', cache_dir=cache_dir, token=access_token)
+
+    print(f'Loading eeyore dataset with sft_mode={sft_mode}')
+    if sft_mode:
+        full_dataset = datasets.load_dataset('liusiyang/eeyore_depression_sft', split='train', cache_dir=cache_dir)
+    else:
+        full_dataset = datasets.load_dataset('liusiyang/eeyore_depression_generated_preference', split='train', cache_dir=cache_dir)
     print('done')
-    
+        
     dataset_size = len(full_dataset)
     indices = list(range(dataset_size))
     
@@ -208,7 +211,7 @@ def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[
         dataset = full_dataset.select(indices[:test_size])
     else:
         raise ValueError(f"Unknown split {split}. Must be 'train' or 'test'")
-    
+        
     def build_conversation_context(prompt_messages):
         """Build the conversation context from the prompt messages."""
         context = ''
@@ -220,22 +223,32 @@ def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[
             elif message['role'] == 'user':
                 context += f"Human: {message['content']}\n\n"
         return context + "Assistant: "
+    
+    def split_prompt_and_responses(ex,sft_mode):
         
-    def split_prompt_and_responses(ex):
-        prompt_messages = ex['prompt']
-        try:
-            prompt = build_conversation_context(prompt_messages)
-        except Exception as e:
-            raise ValueError(f"Error building conversation context from prompt messages: {prompt_messages}") from e
-        chosen_response = f" {ex['chosen'][0]['content']}"
-        rejected_response = f" {ex['rejected'][0]['content']}"
-        
+        if sft_mode:
+            prompt_messages = ex['messages']
+            try:
+                prompt = build_conversation_context(prompt_messages[:-1])
+            except Exception as e:
+                raise ValueError(f"Error building conversation context from prompt messages: {prompt_messages}") from e
+            chosen_response = f" {prompt_messages[-1]['content']}"
+            rejected_response = ''
+        else:
+            prompt_messages = ex['prompt']
+            try:
+                prompt = build_conversation_context(prompt_messages)
+            except Exception as e:
+                raise ValueError(f"Error building conversation context from prompt messages: {prompt_messages}") from e         
+            chosen_response = f" {ex['chosen'][0]['content']}"
+            rejected_response = f" {ex['rejected'][0]['content']}"
+            
         return prompt, chosen_response, rejected_response
 
     data = defaultdict(lambda: defaultdict(list))
     skipped_count = 0
-    for row in tqdm.tqdm(dataset, desc='Processing eeyore_depression_generated_preference', disable=silent):
-        prompt, chosen, rejected = split_prompt_and_responses(row)
+    for row in tqdm.tqdm(dataset, desc='Processing eeyore', disable=silent):
+        prompt, chosen, rejected = split_prompt_and_responses(row, sft_mode)
         responses = [chosen, rejected]
         n_responses = len(data[prompt]['responses'])
         data[prompt]['pairs'].append((n_responses, n_responses + 1))
@@ -243,7 +256,6 @@ def get_eeyore(split: str, silent: bool = False, cache_dir: str = None) -> Dict[
         data[prompt]['sft_target'] = chosen
         
     return data
-
 
 def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = None):
     """Load the given dataset by name. Supported by default are 'shp', 'hh', and 'se'."""
@@ -253,8 +265,10 @@ def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = No
         data = get_hh(split, silent=silent, cache_dir=cache_dir)
     elif name == 'se':
         data = get_se(split, silent=silent, cache_dir=cache_dir)
-    elif name == 'eeyore':
-        data = get_eeyore(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'eeyore_sft':
+        data = get_eeyore(split, sft_mode=True, silent=silent, cache_dir=cache_dir)
+    elif name == 'eeyore_dpo':
+        data = get_eeyore(split, sft_mode=False, silent=silent, cache_dir=cache_dir)
     else:
         raise ValueError(f"Unknown dataset '{name}'")
 
