@@ -18,7 +18,9 @@ fsdp_port: null
 
 # which dataset(s) to train on; can pass a list like datasets=[hh,shp]
 datasets:
+# - eeyore
 - eeyore_sft
+
 
 # wandb configuration
 wandb:

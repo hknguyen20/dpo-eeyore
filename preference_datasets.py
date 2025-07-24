@@ -9,7 +9,16 @@ import random
 from bs4 import BeautifulSoup, NavigableString
 import numpy as np
 from typing import Dict, List, Optional, Iterator, Callable, Union, Tuple
+import os
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Access the variables
+access_token = os.getenv("HF_TOKEN")
+
+print(f"Access Token: {access_token}")
 
 def extract_anthropic_prompt(prompt_and_response):
     """Extract the anthropic prompt from a prompt and response pair."""
@@ -181,6 +190,7 @@ def get_eeyore(split: str, sft_mode: bool = False, silent: bool = False,cache_di
        
        For this dataset, the sft_target is just the chosen response for DPO, and last assistant message for SFT.
     """
+
     print(f'Loading eeyore dataset with sft_mode={sft_mode}')
     if sft_mode:
         full_dataset = datasets.load_dataset('liusiyang/eeyore_depression_sft', split='train', cache_dir=cache_dir)
