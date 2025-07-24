@@ -1,8 +1,13 @@
 import os
 from dotenv import load_dotenv
-from utils import parse_conversation_to_transcript, load_the_interview_prompts, load_the_evaluation_prompts, parse_evaluation_prompts
+from utils import parse_conversation_to_transcript, load_evaluation_prompts, parse_evaluation_prompts, load_model, generate_response, format_system_prompt_str
 import json
+from  questions import Questions
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from typing import List, Dict
+import datasets
 
+q = Questions()
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
@@ -26,95 +31,163 @@ def evaluate_with_evaluator(client, transcript = "None", evaluation_prompts = "N
         raise Exception(f"Error in response: {response.error}")
     return response.output_text
 
-
-
-# Pipeline: 
-#     1. Load the prompts (The three clinical relevant prompts)
-#     2. Load the responses (The three clinical relevant responses) - this use interview prompts
-#     3. Save responses into a file
-#     4. Use gpt-4 to evaluate the alignment (Use 5 likert) - this use evaluation prompts
-#     5. Save the evaluation 
+def run_interview_session(
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    questions: List[str],
+    question_dimension: str,
+    profile: Dict,
+) -> List[Dict[str, str]]:
+    """
+    Run an interview session with the model using provided questions.
+    
+    Args:
+        model: The loaded model
+        tokenizer: The model's tokenizer
+        questions: List of questions to ask
+        question_dimension: Type of questions ('depression_severity', 'symptom_severity', or 'cognitive_distortion')
+        profile: The client's profile data
+    
+    Returns:
+        List of conversation turns
+    """
+    # Initialize conversation with system prompt
+    conversation = [
+        {'role': 'system', 'content': format_system_prompt_str(profile)}
+    ]
+    
+    # For placeholder replacement
+    current_symptom = None
+    current_distortion = None
+    
+    if question_dimension == 'symptom_severity':
+        current_symptom = next(iter(profile['symptom severity'].keys()))
+    elif question_dimension == 'cognitive_distortion':
+        current_distortion = next(iter(profile['cognition distortion exhibition'].keys()))
+    
+    # Ask each question
+    for question in questions:
+        # Replace placeholders if needed
+        if '[SYMPTOM]' in question and current_symptom:
+            question = question.replace('[SYMPTOM]', current_symptom)
+        if '[COGNITIVE_DISTORTION]' in question and current_distortion:
+            question = question.replace('[COGNITIVE_DISTORTION]', current_distortion)
+            
+        # Generate response
+        response = generate_response(
+            model=model,
+            tokenizer=tokenizer,
+            conversation_history=conversation,
+            intervew_agent_question=question
+        )
+        
+        # Skip this question if response generation failed
+        if response is None:
+            continue
+            
+        # Add to conversation
+        conversation.extend([
+            {'role': 'user', 'content': question},
+            {'role': 'assistant', 'content': response}
+        ])
+    
+    return conversation
 
 def main():
-    # Load the prompts
-    depression_prompts = load_the_interview_prompts("depression_severity")
-    symptom_prompts = load_the_interview_prompts("symptom_severity", symptom="anxiety")
-    cognitive_prompts = load_the_interview_prompts("cognitive_distortion", cognitive_distortion="catastrophizing")
-    
-    # Choose the number of prompts for each type
-    number_of_each_type = 1  # Number of prompts for each type
-    all_prompts = depression_prompts[:number_of_each_type] + symptom_prompts[:number_of_each_type] + cognitive_prompts[:number_of_each_type]
-    interview_prompts = [{"role": "assistant", 
-                          "content": f"{prompt}"} for prompt in all_prompts]
-    
-    # _________________
-    # ## CODE HERE ##
-    # # Load the responses (This should be replaced with actual data loading logic)
-    
-    # # responses = [
-    # #  # CALL MODEL HERE TO GENERATE RESPONSES
-    # # ]
-    # ____________________
-    
-    
-    ## Example responses (This should be replaced with actual model responses)
-    responses = [
-        {"role": "user",
-         "content": "I've been feeling really down lately, like nothing seems to matter anymore."},
-    ] * len(all_prompts)  # Dummy responses for each prompt
-
-    # Save responses into a file (This should be replaced with actual file saving logic)
-
-    # Evaluate the responses using the evaluator
+    # Load Model
+    base_model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    checkpoint_dir = "/home/20nguyen.hk/dpo-eeyore/.cache/20nguyen.hk/dpo-eeyore_2025-07-20_15-58-40_995298/LATEST"
+    model, tokenizer = load_model(base_model_name, checkpoint_dir)
     evaluator = load_evaluator()
-    evaluation_prompts = load_the_evaluation_prompts(depression_severity="mild", symptom_severity="mild", cognitive_distortion="not_exhibited")
-
-    # Prepare the conversation data for evaluation
-    conversation = [
-        {'role': 'system', 
-         'content': 'Clinical profile .....'},
-    ]
-    for i,_ in enumerate(interview_prompts):
-        conversation.append(interview_prompts[i])
-        conversation.append(responses[i])
     
+    # Load dataset
+    full_dataset = datasets.load_dataset('liusiyang/eeyore_profile', split='train')
+    samples = full_dataset.select(range(2))
     
+    # Select which dimension to evaluate
+    dimension = "symptom_severity"  # or "symptom_severity" or "cognitive_distortion"
     
-    print(conversation)    
-    transcript = parse_conversation_to_transcript(
-        conversation, 
-        speaker_labels={'user': 'User', 'assistant': 'Assistant', 'system': 'System'},
-        include_system=True
-    )
-    
-    
-    evaluations = evaluate_with_evaluator(
-        evaluator, 
-        transcript=transcript, 
-        evaluation_prompts=parse_evaluation_prompts(evaluation_prompts),
-        model="gpt-4.1"
-    )
-    
-    print(evaluations)
-    
-    try: 
-        evaluations = json.loads(evaluations)
-    except:
-        evaluations = [-1, -1, -1]  # Default values if parsing fails
+    results = []
+    for idx, sample in enumerate(samples):
+        print(f"\nProcessing sample {idx+1}/{len(samples)}...")
+        profile = json.loads(sample['profile'])
         
-    
-    # Save the transcript (This should be replaced with actual file saving logic)
-    with open('evaluations/transcript.txt', 'w') as f:
-        f.write(transcript)
+        # Get questions for the selected dimension
+        questions = getattr(q, dimension)
+        
+        # Run interview session
+        conversation = run_interview_session(
+            model=model,
+            tokenizer=tokenizer,
+            questions=questions,
+            question_dimension=dimension,
+            profile=profile
+        )
+        
+        # Create transcript
+        transcript = parse_conversation_to_transcript(
+            conversation,
+            speaker_labels={'user': 'Supporter', 'assistant': 'Patient', 'system': 'System'},
+            include_system=True
+        )
+        
+        # Get severity level from profile
+        if dimension == "depression_severity":
+            severity = profile['depression severity'].split('-')[0]
+        elif dimension == "symptom_severity":
+            symptom = next(iter(profile['symptom severity'].keys()))
+            severity = profile['symptom severity'][symptom].split('-')[0]
+        else:  # cognitive_distortion
+            distortion = next(iter(profile['cognition distortion exhibition'].keys()))
+            severity = profile['cognition distortion exhibition'][distortion].split('-')[1]
+        
+        # Get evaluation
+        evaluation_prompts = load_evaluation_prompts(dimension, severity)
+        evaluation = evaluate_with_evaluator(
+            evaluator,
+            transcript=transcript,
+            evaluation_prompts=parse_evaluation_prompts(evaluation_prompts)
+        )
+        
+        # Save results
+        result = {
+            'sample_id': idx,
+            'transcript': transcript,
+            'evaluation_score': json.loads(evaluation)[0] if not isinstance(evaluation, list) else evaluation[0]
+        }
+        results.append(result)
+        
+        os.makedirs('evaluations', exist_ok=True)
+        # Save transcript to txt file
+        with open(f'evaluations/{dimension}_sample_{idx}.txt', 'w') as f:
+            f.write(transcript)
 
-    # Save the evaluation (This should be replaced with actual file saving logic)
-    result = {  'depression_severity': evaluations[0],
-                'symptom_severity': evaluations[1],
-                'cognitive_distortion': evaluations[2]}
-    
-    with open('evaluations/evaluations.txt', 'w') as f:
-        for key, eval in result.items():
-            f.write(f"{key}: {eval}\n")
+        # Save results to jsonl
+        result_json = {
+            'sample_id': idx,
+            'evaluation_score': json.loads(evaluation)[0] if not isinstance(evaluation, list) else evaluation[0]
+        }
+        with open(f'evaluations/{dimension}_results.jsonl', 'a') as f:
+            json.dump(result_json, f)
+            f.write('\n')
+            
+        average_score = sum(r['evaluation_score'] for r in results) / len(results)
+        summary = {
+        'dimension': dimension,
+        'num_samples': len(results),
+        'average_score': round(average_score, 2)
+        }
+        
+        with open(f'evaluations/{dimension}_summary.json', 'w') as f:
+            json.dump(summary, f, indent=4)
+            
+        # Print summary
+        print("\nEvaluation Summary:")
+        print(f"Dimension: {dimension}")
+        print(f"Average score: {average_score:.2f}")
+        print(f"Results saved to: evaluations/{dimension}_results.jsonl")
+        print(f"Transcripts saved to: evaluations/{dimension}_sample_*.txt")
+        print(f"Summary saved to: evaluations/{dimension}_summary.json")
 
 if __name__ == "__main__":
     main()

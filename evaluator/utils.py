@@ -1,3 +1,129 @@
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.generation import (
+    LogitsProcessorList,
+    SequenceBiasLogitsProcessor,
+    ExponentialDecayLengthPenalty
+)
+
+import os
+from typing import Optional, Dict, Tuple, List
+def format_system_prompt(profile: Dict, indent_level: int = 0) -> List[str]:
+    """
+    Format profile data into system prompt lines recursively.
+    
+    Args:
+        profile: Dictionary containing profile data
+        indent_level: Current indentation level for nested items
+        
+    Returns:
+        List of formatted lines
+    """
+    lines = []
+    indent = "  " * indent_level
+    if indent_level == 0: # Add header only at top level
+        lines.extend([
+            "You will act as a help-seeker struggling with negative emotions in a conversation with someone who is listening to you.",
+            "\nYOUR PROFILE:"
+        ])
+    # Process each key-value pair
+    for key, value in profile.items():
+        if isinstance(value, dict):
+            # For nested dictionaries, add section header and process recursively
+            lines.append(f"{indent}- {key}")
+            lines.extend(format_system_prompt(value, indent_level + 1))
+        else:
+            # For string/number values, add directly
+            lines.append(f"{indent}- {key}: {value}")
+    if indent_level == 0: # Add task description at the end of top level
+        lines.extend([
+            "\nYOUR TASK:",
+            "As the client, your role is to continue the conversation by responding naturally to the supporter, reflecting the characteristics outlined in your profile."
+        ])
+    return lines
+
+def format_system_prompt_str(profile: Dict) -> str:
+    """Wrapper function to get the formatted system prompt as a string."""
+    return "\n".join(format_system_prompt(profile))
+
+def load_model(
+    base_model_name: str,
+    checkpoint_dir: str = None,
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+) -> Tuple[AutoModelForCausalLM, AutoTokenizer, Dict]:
+    """
+    Load a trained model from checkpoint.
+    
+    Args:
+        checkpoint_dir: Directory containing the checkpoint files. If None: load base model.
+        base_model_name: Name of the base model used for training
+        device: Device to load the model on
+    """
+  
+    # Initialize model and tokenizer from base model
+    model = AutoModelForCausalLM.from_pretrained(base_model_name)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    
+    # If base model have been SFT/DPO, load aved checkpoint
+    if checkpoint_dir:
+        checkpoint_path = os.path.join(checkpoint_dir, "policy.pt")
+        checkpoint = torch.load(checkpoint_path, map_location=device)        
+        # Load the trained weights
+        model.load_state_dict(checkpoint['state'])
+    
+    # Move model to device and set to eval mode
+    model = model.to(device)
+    model.eval()
+
+    return model, tokenizer
+
+def generate_response(
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    conversation_history: List[Dict[str, str]],
+    intervew_agent_question: str
+) -> Optional[str]:
+    """Generate a response from the model."""
+    try:
+        # Prepare the conversation history as a single string
+        full_prompt = "\n\n".join(
+            f"{entry['role']}: {entry['content']}" for entry in conversation_history
+        )
+        full_prompt += f"\n\nHuman: {intervew_agent_question}\n\nAssistant:"
+        inputs = tokenizer(full_prompt, return_tensors="pt").to(model.device)
+        # Ensure padding token is set
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token_id = tokenizer.eos_token_id
+            
+        # EOS token generation settings from Eeyore paper
+        # logits_processor = LogitsProcessorList()
+        # sequence_bias = {(tokenizer.eos_token_id,): -4.0}
+        # logits_processor.append(
+        #     SequenceBiasLogitsProcessor(sequence_bias)
+        # )
+        # logits_processor.append(
+        #     ExponentialDecayLengthPenalty(
+        #         #TODO
+        #     )
+        # )
+        
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                pad_token_id=tokenizer.pad_token_id,
+                # logits_processor=logits_processor,
+            )
+        
+        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Remove the prompt from the response
+        response = response[len(full_prompt):].strip()
+        return response
+    except ValueError as e:
+        if "Input length of input_ids" in str(e):
+            print(f"Skipping sample due to length exceeding max_length: {e}")
+            return None
+        raise e
+
 def parse_conversation_to_transcript(conversation_data, include_system=False, speaker_labels=None):
     """
     Parse a list of conversation dictionaries into a clean transcript format.
@@ -48,77 +174,28 @@ def parse_conversation_to_transcript(conversation_data, include_system=False, sp
     
     return '\n\n'.join(transcript_lines)
 
-def load_the_interview_prompts(type_of_clinically_relevant: str = "None", symptom: str = "None", cognitive_distortion: str = "None") -> list:
-    """
-    Load the prompts for evaluating depression severity.
-    Returns a list of prompts.
-    """
-    SYMPTOM = symptom
-    COGNITIVE_DISTORTION = cognitive_distortion
-    
-    if type_of_clinically_relevant == "None":
-        raise ValueError("Please specify the type of clinically relevant prompts.")
-    if type_of_clinically_relevant == "depression_severity":
-        prompts = [ 
-            "How have you been feeling emotionally over the past few weeks?", 
-            "Do you still enjoy activities that you used to find fun or meaningful?", 
-            "How has your energy been lately? Do you feel tired or drained often?", 
-            "Do you ever feel guilty, worthless, or overly critical of yourself?", 
-            "Have you had any thoughts about death, feeling hopeless, or that things won’t get better?"
-        ]
-        return prompts
-    elif type_of_clinically_relevant == "symptom_severity":
-        if SYMPTOM == "None":
-            raise ValueError("Please specify the symptom.")
-        prompts = [ 
-            f"Have you been experiencing {SYMPTOM} recently?",
-            f"How much does {SYMPTOM} affect your daily life or ability to do things you enjoy?",
-            f"What, if anything, helps when {SYMPTOM} happens? Have you found ways to manage or reduce it?",
-        ]
-        return prompts
-    elif type_of_clinically_relevant == "cognitive_distortion":
-        if COGNITIVE_DISTORTION == "None":
-            raise ValueError("Please specify the cognitive distortion.")
-        prompts = [
-            f"Can you describe a recent situation where you felt {COGNITIVE_DISTORTION} influencing your thoughts?",
-            f"Have you noticed any patterns or triggers that make {COGNITIVE_DISTORTION} more frequent or intense?",
-            f"What impact does {COGNITIVE_DISTORTION} have on your mood, motivation, or self-esteem?",
-        ]
-        return prompts
-    else:
-        raise ValueError("Invalid type of clinically relevant prompts. Please choose from 'depression_severity', 'symptom_severity', or 'cognitive_distortion'.")
-
-
-def load_the_evaluation_prompts(depression_severity: str = "None", symptom_severity: str = "None", cognitive_distortion: str = "None") -> list:
+def load_evaluation_prompts(depression_severity: str = "None", symptom_severity: str = "None", cognitive_distortion: str = "None") -> list:
     evaluation_prompts = []
     
     # 1-Minimal Depression, 2-Mild Depression, 3-Moderate Depression, and 4-Severe Deperession
-    if depression_severity == "None":
-        raise ValueError("Please specify the depression_severity.")
-    prompts = [
+    if depression_severity:
+        return [
         f"How subtly and consistently does the client reflect a {depression_severity} level of depression in their responses?",
-    ]
-    evaluation_prompts.extend(prompts)
-    
+        ]
+      
     # 1-Not exhibited, 2-Mild, 3-Moderate, and 4-Severe.
-    if symptom_severity == "None":
-        raise ValueError("Please specify the symptom_severity.")
-    symptom_severity = symptom_severity.lower()
-    prompts = [
-        f"How subtly and consistently does the client reflect a {symptom_severity} level of symptoms in their responses?",
-    ]
-    evaluation_prompts.extend(prompts)
+    if symptom_severity:
+        symptom_severity = symptom_severity.lower()
+        return [
+            f"How subtly and consistently does the client reflect a {symptom_severity} level of symptoms in their responses?",
+        ]
     
     # 1-Not exhibited and 2-Exhibited.
-    if cognitive_distortion == "None":
-        raise ValueError("Please specify the cognitive distortion.")
-    prompts = [
-        f"How subtly and consistently does the client reflect a {cognitive_distortion} level of cognitive distortion in their responses?"
-    ]
-    
-    
-    evaluation_prompts.extend(prompts)
-    return evaluation_prompts
+    if cognitive_distortion:
+        return [
+            f"How subtly and consistently does the client reflect a {cognitive_distortion} level of cognitive distortion in their responses?"
+        ]
+
 
 def parse_evaluation_prompts(evaluation_prompts):
     parsed_prompts = []

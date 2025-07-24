@@ -5,3 +5,4 @@ outputs/
 *.out
 *.log
 .env
+evaluations/*
